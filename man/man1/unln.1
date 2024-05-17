@@ -1,0 +1,132 @@
+.TH UNLN 1 2024 UNLN\ 0.1.0
+
+.SH NAME
+unln \- remove symlinks and their targets
+
+.SH SYNOPSIS
+.SY
+\fBunln\fR [<options>] <link|file> ...
+.YS
+
+.SH DESCRIPTION
+\fBunln\fR allows the user to remove symlinks as well as their targets depending on the options set. It is possible to leave the targets untouched, remove the targets based on whether they themselves are links or non-link files, as well as recursively remove targets that are links to a specified level.
+
+As an additional feature, it is also possible to remove non-link files by directly passing them to \fBunln\fR as well (provided the appropriate option is set). The latter feature is added for ease of use to provide the ability to remove both link and non-link files within a single operation.
+
+.SH OPTIONS
+
+.SS Passing arguments to options
+
+Enhanced \fBgetopt\fR syntax applies when passing options. There is one important point to highlight when it comes to passing options with required vs optional arguments.
+
+In case of a short option, if an option takes a *required* argument, the argument may be written as a separate parameter, *or* directly after the option character. If an option takes an *optional* argument, however, the argument *must* be written directly after the option character.
+
+In case of a long option, if an option takes a *required* argument, the argument may be written as a separate parameter, *or* directly after the option name, separated by an equals sign (`=`). If an option takes an *optional* argument, however, the argument *must* be writtent directly after the option name, separated by an equals sign (`=`).
+
+.TS
+tab(|);
+l l l .
+|Short option|Long option
+Required argument|\fB-o\fR <value>|\fB--option\fR <value>
+|\fB-o\fR<value>|\fB--option\fR=<value>
+Optional argument|\fB-o\fR[<value>]|\fB--option\fR[=<value>]
+.TE
+
+Options that take optional arguments can be recognized in the options list below by their <value> and the preceding equals sign being enclosed in square brackets:
+
+.EX
+\fB-o, --option\fR[=<value>]
+.EE
+
+.SS General
+
+.TP
+.B -r, --run
+Perform the specified operations instead of simulating them.
+
+.TP
+.B -R, --no-run
+Simulate the specified operations instead of performing them. This is the default.
+
+.TP
+.B -p, --print-cmd
+Print a preview of the commands to be executed.
+
+.TP
+.B -P, --no-print-cmd
+Do not print a preview of the commands to be executed. This is the default.
+
+.TP
+.B -t, --remove-targets\fR[={links|files|all|none}]
+Remove targets of the specified type.
+
+.RS
+.TP
+links
+Remove targets that are links.
+.TP
+files
+Remove targets that are non-link files.
+.TP
+[all]
+Remove both the targets that are links and those that are non-link files.
+.TP
+none (default)
+Do not remove targets. Equivalent to \fB-T, --no-remove-targets\fR.
+.RE
+
+.TP
+.B -T, --no-remove-targets
+Do not remove targets. Equivalent to \fB-t, --remove-targets\fR set to `none`.
+
+.TP
+.B -f, --remove-files
+Remove non-link files passed as positional arguments to \fBunln\fR.
+
+.TP
+.B -F, --no-remove-files
+Do not remove non-link files passed as positional arguments to \fBunln\fR. This is the default.
+
+.TP
+.B -L, --dereference-targets\fR[={<integer>|inf}]
+Dereference link targets to a specified level for recursive removal. The default value is `0`.
+
+The value can be an integer greater than or equal to 0, `inf`, or no value. Omitting the value is equivalent to passing `inf`. 
+
+.SS Other
+
+.TP
+.B -c, --color
+Colorize the output. This is the default.
+
+.TP
+.B -C, --no-color
+Disable colorization of the output.
+
+.TP
+.B -h, --help
+Print help.
+
+.TP
+.B -V, --version
+Print version information.
+
+.SH FILES
+
+A configuration file can be used to set default options.
+
+The configuration file's location is \fI$XDG_CONFIG_HOME/unln/config.bash\fR. If \fIXDG_CONFIG_HOME\fR is not set, it defaults to \fI~/.config\fR.
+
+.SH AUTHOR
+
+Alex Rogers <https://github.com/linguisticmind>
+
+.SH HOMEPAGE
+
+<https://github.com/linguisticmind/unln>
+
+.SH COPYRIGHT
+
+Copyright © 2023 Alex Rogers. License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.
+
+This is free software: you are free to change and redistribute it. There is NO WARRANTY, to the extent permitted by law.

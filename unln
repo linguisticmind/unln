@@ -1,0 +1,365 @@
+#!/usr/bin/env bash
+
+# unln - remove symlinks and their targets
+# copyright (c) 2024  Alex Rogers (https://github.com/linguisticmind)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+version=0.1.0
+
+getopt -T > /dev/null
+[[ $? != 4 ]] && { printf '[%s] %s\n' "${BASH_SOURCE##*/}" 'Enhanced getopt is required to run this script.' >&2; exit 1; }
+
+help='unln [<options>] <link|file> ...
+
+-r, --run
+        Perform the specified operations instead of 
+        simulating them.
+
+-R, --no-run
+        Simulate the specified operations instead of 
+        performing them.
+
+-p, --print-cmd
+        Print a preview of the commands to be executed.
+
+-P, --no-print-cmd
+        Do not print a preview of the commands to be 
+        executed.
+
+-t, --remove-targets[={links|files|all|none}]
+        Remove targets of the specified type.
+
+-T, --no-remove-targets
+        Do not remove targets.
+
+-f, --remove-files
+        Remove non-link files passed as positional 
+        arguments to unln.
+
+-F, --no-remove-files
+        Do not remove non-link files passed as positional 
+        arguments to unln.
+
+-L, --dereference-targets[={<integer>|inf}]
+        Dereference link targets to a specified level for 
+        recursive removal.
+
+-c, --color
+        Colorize the output.
+
+-C, --no-color
+        Disable colorization of the output.
+
+-h, --help
+        Print help.
+
+-V, --version
+        Print version information.
+'
+
+opts=$(getopt -n "${BASH_SOURCE##*/}" -o 'r,R,p,P,t::,T,f,F,L::,c,C,h,V,' -l 'run,no-run,print-cmd,no-print-cmd,remove-targets::,no-remove-targets,remove-files,no-remove-files,dereference-targets::,color,no-color,help,version,' -- "$@")
+
+[[ $? != 0 ]] && exit 1
+
+eval set -- "$opts"
+
+declare -A colors symbols
+
+opt_run=
+opt_print_cmd=
+opt_remove_targets='none'
+opt_remove_files=
+opt_dereference_targets=0
+opt_color=1
+
+colors[sim]=2
+colors[report_num]=
+colors[report_file_file]='32'
+colors[report_file_dir]='34'
+colors[report_file_link]='36'
+colors[report_action_normal]=
+colors[report_action_none]=
+colors[report_action_destructive]='31'
+colors[report_action_impossible]='9'
+colors[report_state_normal]=
+colors[print_cmd_indicator]='38;2;64;64;64'
+colors[print_cmd_cmd]='38;2;128;128;128'
+colors[print_cmd_opt]='38;2;196;196;196'
+colors[print_cmd_arg]='38;2;64;64;64'
+
+symbols[action_remove_file]='x'
+symbols[action_remove_link]='x>'
+symbols[action_no_action]=':'
+symbols[action_impossible_already_removed_file]='~'
+symbols[action_impossible_already_removed_link]='~>'
+symbols[state_link]='->'
+symbols[print_cmd_indicator]='┃'
+
+test -f "${XDG_CONFIG_HOME:-$HOME/.config}"'/unln/config.bash' && source "$_"
+
+for k in "${!colors[@]}"; do
+  [[ $k != 'sim'* && ! ${colors[sim_$k]} ]] && colors[sim_$k]="${colors[sim]}"${colors[$k]:+';'"${colors[$k]}"}
+done
+
+for k in "${!colors[@]}"; do
+  colors[$k]=$'\x1b['"${colors[$k]}"'m'
+done
+
+while true; do
+  case $1 in
+    -r | --run ) opt_run=1; shift ;;
+    -R | --no-run ) opt_run=; shift ;;
+    -p | --print-cmd ) opt_print_cmd=1; shift ;;
+    -P | --no-print-cmd ) opt_print_cmd=; shift ;;
+    -t | --remove-targets ) opt_remove_targets="${2:-all}"; shift 2 ;;
+    -T | --no-remove-targets ) opt_remove_targets='none'; shift ;;
+    -f | --remove-files ) opt_remove_files=1; shift ;;
+    -F | --no-remove-files ) opt_remove_files=; shift ;;
+    -L | --dereference-targets ) opt_dereference_targets="${2:-inf}"; shift 2 ;;
+    -c | --color ) opt_color=1; shift ;;
+    -C | --no-color ) opt_color=; shift ;;
+    -h | --help ) printf '%s\n' "$help"; exit ;;
+    -V | --version ) printf '%s\n' "$version"; exit ;;
+    -- ) shift; break ;;
+    * ) printf '[%s] %s\n' "${BASH_SOURCE##*/}" 'Internal error: unable to parse option `'"$1"'`.' >&2; exit 1 ;;
+  esac
+done
+
+shopt -s extglob globstar
+
+had_errors=
+
+case $opt_remove_targets in
+  links | files | all | none ) ;;
+  * )
+    printf \
+      ${opt_color:+'\x1b[31m'}'[%s] %s'${opt_color:+'\x1b[39m'}'\n' \
+      "${BASH_SOURCE##*/}" \
+      'Invalid optional argument to `-t, --remove-targets`: '"${opt_remove_targets@Q}"'. The allowed values are `links`, `files`, `all` or an empty string, or `none`.' >&2
+    had_errors=1
+  ;;
+esac
+
+case $opt_dereference_targets in
+  +([0-9]) | inf ) ;;
+  * )
+    printf \
+      ${opt_color:+'\x1b[31m'}'[%s] %s'${opt_color:+'\x1b[39m'}'\n' \
+      "${BASH_SOURCE##*/}" \
+      'Invalid optional argument to `-L, --dereference-targets`: '"${opt_dereference_targets@Q}"'. Only integer values greater or equal to zero, and `inf` or an empty string are allowed.' >&2
+    had_errors=1
+  ;;
+esac
+
+if [[ $had_errors ]]; then
+  exit 1
+fi
+
+if [[ ! $opt_run ]]; then
+  printf \
+    ${opt_color:+'\x1b[2m'}'[%s] %s'${opt_color:+'\x1b[22m'}'\n' \
+    "${BASH_SOURCE##*/}" \
+    'Simulating.' >&2
+else
+  printf \
+    ${opt_color:+'\x1b[32m'}'[%s] %s'${opt_color:+'\x1b[39m'}'\n' \
+    "${BASH_SOURCE##*/}" \
+    'Running.' >&2
+fi
+
+no_run=
+[[ ! $opt_run ]] && no_run=1
+
+symbols[action_remove_link]=${opt_color:+"${colors[${no_run:+sim_}report_action_destructive]}"}"${symbols[action_remove_link]}"${opt_color:+$'\x1b[0m'}
+symbols[action_remove_file]=${opt_color:+"${colors[${no_run:+sim_}report_action_destructive]}"}"${symbols[action_remove_file]}"${opt_color:+$'\x1b[0m'}
+symbols[action_link]=${opt_color:+${no_run:+"${colors[${no_run:+sim_}report_action_normal]}"}}"${symbols[action_link]}"${opt_color:+$'\x1b[0m'}
+symbols[state_link]=${opt_color:+${no_run:+"${colors[${no_run:+sim_}report_state_normal]}"}}"${symbols[state_link]}"${opt_color:+$'\x1b[0m'}
+symbols[action_no_action]=${opt_color:+${no_run:+"${colors[${no_run:+sim_}report_action_none]}"}}"${symbols[action_no_action]}"${opt_color:+$'\x1b[0m'}
+
+declare -A widths=(
+  [arg]=
+  [print_cmd_indicator]="$((${##} - $(<<<"${symbols[print_cmd_indicator]}" wc -L) + $(printf '%s' "${symbols[print_cmd_indicator]}" | wc -c)))"
+)
+
+for arg; do
+  arg_width=$(<<<"${arg@Q}" wc -L)
+  [[ $arg_width -gt ${widths[arg]} ]] && widths[arg]="$arg_width"
+done
+
+declare -A removed=()
+declare -a msgs=()
+
+for ((i=1; i<="$#"; i++)); do
+
+  arg_key_normalized=$(realpath --no-symlinks "${!i}")
+
+  color_arg=() symbol_action=
+  if [[ -L ${!i} ]]; then
+    if [[ ! ${removed[$arg_key_normalized]} ]]; then
+      color_arg="${colors[${no_run:+sim_}report_file_link]}" symbol_action="${symbols[action_remove_link]}"
+    else
+      color_arg="${colors[${no_run:+sim_}report_action_impossible]}" symbol_action="${symbols[action_impossible_already_removed_link]}" 
+    fi
+  else
+    if [[ ! ${removed[$arg_key_normalized]} ]]; then
+      [[ ! -d ${!i} ]] && color_arg="${colors[${no_run:+sim_}report_file_file]}" || color_arg="${colors[${no_run:+sim_}report_file_dir]}"
+      [[ $opt_remove_files ]] && symbol_action="${symbols[action_remove_file]}" || symbol_action="${symbols[action_no_action]}"
+    else
+      color_arg="${colors[${no_run:+sim_}report_action_impossible]}" symbol_action="${symbols[action_impossible_already_removed_file]}" 
+    fi
+  fi
+
+  format_str=${opt_color:+"${colors[${no_run:+sim_}report_num]}"}'%*s'${opt_color:+$'\x1b[0m'}' '
+  format_str+=${opt_color:+"${color_arg[0]}"}'%-*s'${opt_color:+$'\x1b[0m'}' '
+  format_str+='%s '
+ 
+  msgs[$i]=$(printf "$format_str" "${##}" "$i" "${widths[arg]}" "${!i@Q}" "$symbol_action")
+
+  [[ ! ${removed[$arg_key_normalized]} ]] && removed[$arg_key_normalized]=1
+
+  if [[ -L ${!i} ]]; then
+
+    n=0 link_dir_link_target= chain_broken=
+
+    while [[ ! $link_dir_link_target || -L $link_dir_link_target ]]; do
+
+      [[ ! $link_dir_link_target ]] && link_target=$(readlink "${!i}") || link_target=$(readlink "$link_dir_link_target")
+      [[ $link_target != /* ]] && link_dir_link_target="$(dirname "${!i}")"'/'"$link_target" || link_dir_link_target="$link_target"
+      link_dir_link_target_key_normalized=$(realpath --no-symlinks "$link_dir_link_target")
+
+      color_target=() symbol_action= no_action=
+      if [[ -L $link_dir_link_target ]]; then
+        if [[ ! ${removed[$link_dir_link_target_key_normalized]} ]]; then
+          color_target="${colors[${no_run:+sim_}report_file_link]}" 
+          [[ $opt_remove_targets = @(links|all) && ($n = 0 || ($n -gt 0 && ($opt_dereference_targets = 'inf' || $n -le $opt_dereference_targets))) ]] && symbol_action="${symbols[action_remove_link]}" || symbol_action="${symbols[state_link]}" no_action=1 chain_broken=1
+        else
+          color_target="${colors[${no_run:+sim_}report_action_impossible]}" symbol_action="${symbols[action_impossible_already_removed_link]}" 
+        fi
+      else
+        if [[ ! ${removed[$link_dir_link_target_key_normalized]} ]]; then
+          [[ ! -d ${!i} ]] && color_target="${colors[${no_run:+sim_}report_file_file]}" || color_target="${colors[${no_run:+sim_}report_file_dir]}"
+          [[ ! $chain_broken && $opt_remove_targets = @(files|all) && ($opt_dereference_targets = 'inf' || $n -le $opt_dereference_targets) ]] && symbol_action="${symbols[action_remove_file]}" || symbol_action="${symbols[action_no_action]}"
+        else
+          color_target="${colors[${no_run:+sim_}report_action_impossible]}" symbol_action="${symbols[action_impossible_already_removed_file]}"
+        fi
+      fi
+
+      format_str=${opt_color:+"${color_target[0]}"}'%s'${opt_color:+$'\x1b[0m'}' '
+      format_str+='%s '
+
+      msgs[$i]+=$(printf "$format_str" "${link_target@Q}" "$symbol_action")
+
+      if [[ ! $no_action && ! ${removed[$link_dir_link_target_key_normalized]} && ( \
+            $opt_remove_targets = 'all' || \
+            ($opt_remove_targets = 'links' && -L $link_dir_link_target_key_normalized) || \
+            ($opt_remove_targets = 'files' && ! -L $link_dir_link_target_key_normalized )) ]]; then
+        if [[ ! -d $link_dir_link_target_key_normalized ]]; then
+          removed[$link_dir_link_target_key_normalized]=1
+        else
+          for key_normalized in "$link_dir_link_target_key_normalized"/**; do
+            removed[${key_normalized%/}]=1
+          done
+        fi
+      fi
+
+      ((n++))
+
+    done
+
+  fi
+
+done
+
+removed=()
+
+for ((i=1; i<="$#"; i++)); do
+
+  arg_key_normalized=$(realpath --no-symlinks "${!i}")
+
+  cmd_args_rm_nonopts=()
+
+  if [[ -L ${!i} || $opt_remove_files ]]; then
+    [[ ! ${removed[$arg_key_normalized]} ]] && cmd_args_rm_nonopts+=("${!i}") removed[$arg_key_normalized]=1
+  fi
+
+  if [[ -L ${!i} ]]; then
+
+    if [[ $opt_remove_targets = @(links|files|all) ]]; then
+
+      link_target=$(readlink "${!i}") link_dir_link_target=
+      [[ $link_target != /* ]] && link_dir_link_target="$(dirname "${!i}")"'/'"$link_target" || link_dir_link_target="$link_target"
+      link_dir_link_target_key_normalized=$(realpath --no-symlinks "$link_dir_link_target")
+
+      [[ ! ${removed[$link_dir_link_target_key_normalized]} && ((! -L $link_dir_link_target && $opt_remove_targets = @(files|all)) || -L $link_dir_link_target && $opt_remove_targets != 'files') ]] && cmd_args_rm_nonopts+=("$(realpath --no-symlinks --relative-to . "$link_dir_link_target")") removed[$link_dir_link_target_key_normalized]=1
+
+      if [[ $opt_dereference_targets ]]; then
+
+        n=1
+
+        while [[ -L $link_dir_link_target ]]; do
+
+          [[ $opt_remove_targets = 'files' || ($opt_dereference_targets != 'inf' && $n -gt $opt_dereference_targets) ]] && break
+
+          link_target=$(readlink "$link_dir_link_target")
+          [[ $link_target != /* ]] && link_dir_link_target="$(dirname "${!i}")"'/'"$link_target" || link_dir_link_target="$link_target"
+          link_dir_link_target_key_normalized=$(realpath --no-symlinks "$link_dir_link_target")
+
+          [[ ! ${removed[$link_dir_link_target_key_normalized]} && ((! -L $link_dir_link_target && $opt_remove_targets = @(files|all)) || -L $link_dir_link_target) ]] && cmd_args_rm_nonopts+=("$(realpath --no-symlinks --relative-to . "$link_dir_link_target")") removed[$link_dir_link_target_key_normalized]=1
+
+          ((n++))
+
+        done
+
+      fi
+
+    fi
+
+  fi
+
+  printf '%s\n' "${msgs[$i]}"
+
+  if [[ $opt_print_cmd && ${cmd_args_rm_nonopts[@]} ]]; then
+
+    cmd_args_rm_opts=()
+    [[ ! -L ${cmd_args_rm_nonopts[$((${#cmd_args_rm_nonopts[@]} - 1))]} && -d ${cmd_args_rm_nonopts[$((${#cmd_args_rm_nonopts[@]} - 1))]} ]] && cmd_args_rm_opts=(-r) cmd_args_rm_nonopts[$((${#cmd_args_rm_nonopts[@]} - 1))]+='/' cmd_args_rm_nonopts[$((${#cmd_args_rm_nonopts[@]} - 1))]="${cmd_args_rm_nonopts[$((${#cmd_args_rm_nonopts[@]} - 1))]/+(\/)/\/}"
+
+    format_str=${opt_color:+"${colors[${no_run:+sim_}print_cmd_indicator]}"}'%*s'${opt_color:+$'\x1b[0m'}' '
+    format_str+=${opt_color:+"${colors[${no_run:+sim_}print_cmd_cmd]}"}'%s'${opt_color:+$'\x1b[0m'}' '
+
+    printf "$format_str" "${widths[print_cmd_indicator]}" "${symbols[print_cmd_indicator]}" 'rm'
+    [[ ${cmd_args_rm_opts[@]} ]] && printf ${opt_color:+"${colors[${no_run:+sim_}print_cmd_opt]}"}'%s'${opt_color:+$'\x1b[0m'}' ' "${cmd_args_rm_opts[@]}" 
+    printf ${opt_color:+"${colors[${no_run:+sim_}print_cmd_arg]}"}'%s'${opt_color:+$'\x1b[0m'}' ' "${cmd_args_rm_nonopts[@]@Q}"
+    printf '\n'
+
+  fi
+
+  if [[ $opt_run && ${cmd_args_rm_nonopts[@]} ]]; then
+    rm "${cmd_args_rm_opts[@]}" "${cmd_args_rm_nonopts[@]}"
+  fi
+
+done
+
+if [[ ! $opt_run ]]; then
+  printf \
+    ${opt_color:+'\x1b[2m'}'[%s] %s'${opt_color:+'\x1b[22m'}'\n' \
+    "${BASH_SOURCE##*/}" \
+    'Simulation complete.' >&2
+else
+  printf \
+    ${opt_color:+'\x1b[32m'}'[%s] %s'${opt_color:+'\x1b[39m'}'\n' \
+    "${BASH_SOURCE##*/}" \
+    'Done.' >&2
+fi
+
