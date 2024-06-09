@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-version=0.1.0
+version=0.1.1
 
 getopt -T > /dev/null
 [[ $? != 4 ]] && { printf '[%s] %s\n' "${BASH_SOURCE##*/}" 'Enhanced getopt is required to run this script.' >&2; exit 1; }
@@ -110,7 +110,7 @@ symbols[print_cmd_indicator]='┃'
 test -f "${XDG_CONFIG_HOME:-$HOME/.config}"'/unln/config.bash' && source "$_"
 
 for k in "${!colors[@]}"; do
-  [[ $k != 'sim'* && ! ${colors[sim_$k]} ]] && colors[sim_$k]="${colors[sim]}"${colors[$k]:+';'"${colors[$k]}"}
+  [[ $k != 'sim'* && ! ${colors[sim_$k]} ]] && colors[sim_$k]="${colors[sim]}"${colors[$k]:+${colors[sim]:+';'}"${colors[$k]}"}
 done
 
 for k in "${!colors[@]}"; do
@@ -332,8 +332,8 @@ for ((i=1; i<="$#"; i++)); do
 
   if [[ $opt_print_cmd && ${cmd_args_rm_nonopts[@]} ]]; then
 
-    cmd_args_rm_opts=()
-    [[ ! -L ${cmd_args_rm_nonopts[$((${#cmd_args_rm_nonopts[@]} - 1))]} && -d ${cmd_args_rm_nonopts[$((${#cmd_args_rm_nonopts[@]} - 1))]} ]] && cmd_args_rm_opts=(-r) cmd_args_rm_nonopts[$((${#cmd_args_rm_nonopts[@]} - 1))]+='/' cmd_args_rm_nonopts[$((${#cmd_args_rm_nonopts[@]} - 1))]="${cmd_args_rm_nonopts[$((${#cmd_args_rm_nonopts[@]} - 1))]/+(\/)/\/}"
+    cmd_args_rm_opts=(--)
+    [[ ! -L ${cmd_args_rm_nonopts[$((${#cmd_args_rm_nonopts[@]} - 1))]} && -d ${cmd_args_rm_nonopts[$((${#cmd_args_rm_nonopts[@]} - 1))]} ]] && cmd_args_rm_opts=(-r --) cmd_args_rm_nonopts[$((${#cmd_args_rm_nonopts[@]} - 1))]+='/' cmd_args_rm_nonopts[$((${#cmd_args_rm_nonopts[@]} - 1))]="${cmd_args_rm_nonopts[$((${#cmd_args_rm_nonopts[@]} - 1))]/+(\/)/\/}"
 
     format_str=${opt_color:+"${colors[${no_run:+sim_}print_cmd_indicator]}"}'%*s'${opt_color:+$'\x1b[0m'}' '
     format_str+=${opt_color:+"${colors[${no_run:+sim_}print_cmd_cmd]}"}'%s'${opt_color:+$'\x1b[0m'}' '

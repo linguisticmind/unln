@@ -20,14 +20,16 @@ Video tutorial:
     </tr>
     <tr>
         <td>
-            <a href="https://github.com/linguisticmind/unln/releases/tag/v0.1.0">0.1.0</a>
+            <a href="https://github.com/linguisticmind/reln/releases/tag/v0.1.1">0.1.1</a></td>
         </td>
         <td>
-            2024-05-17
+            2024-06-09
         </td>
         <td>
             <p>
-                Initial release.
+                Specified end of options (<code>--</code>) for the <code>rm</code> command to prevent problems with files whose name starts with a hyphen.<br>
+                Fixed processing of <code>sim_</code> colors.<br>
+                Fixed an HTML error in the CHANGELOG.
             </p>
         </td>
     </tr>
@@ -214,7 +216,7 @@ COPYRIGHT
        This  is  free  software:  you  are free to change and redistribute it.
        There is NO WARRANTY, to the extent permitted by law.
 
-UNLN 0.1.0                           2024                              UNLN(1)
+UNLN 0.1.1                           2024                              UNLN(1)
 ```
 
 ## License
